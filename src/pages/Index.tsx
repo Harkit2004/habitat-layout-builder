@@ -1,11 +1,22 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useState } from 'react';
+import { ComponentLibrary } from '@/components/ComponentLibrary';
+import { LayoutCanvas } from '@/components/LayoutCanvas';
+import { Toolbar } from '@/components/Toolbar';
+import { HabitatModule } from '@/data/habitatModules';
 
 const Index = () => {
+  const [selectedModule, setSelectedModule] = useState<HabitatModule | null>(null);
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
+    <div className="h-screen flex flex-col bg-background">
+      <Toolbar />
+      <div className="flex-1 flex overflow-hidden">
+        <div className="w-80 flex-shrink-0">
+          <ComponentLibrary onModuleSelect={setSelectedModule} />
+        </div>
+        <div className="flex-1">
+          <LayoutCanvas />
+        </div>
       </div>
     </div>
   );

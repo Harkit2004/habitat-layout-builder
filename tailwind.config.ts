@@ -57,6 +57,13 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        technical: {
+          accent: "hsl(var(--technical-accent))",
+          warning: "hsl(var(--warning))",
+          success: "hsl(var(--success))",
+        },
+        grid: "hsl(var(--grid-line))",
+        canvas: "hsl(var(--canvas-bg))",
       },
       borderRadius: {
         lg: "var(--radius)",
