@@ -5,70 +5,19 @@ export interface SubModule {
   name: string;
   shortName: string;
   width: number; // meters
-  depth: number; // meters
+  depth: number; // meters (length in specs)
   height: number; // meters
   volume: number; // m³
-  category: 'living' | 'hygiene' | 'dining' | 'exercise' | 'medical' | 'maintenance' | 'storage' | 'control';
+  category: 'hygiene' | 'dining' | 'storage' | 'maintenance' | 'habitat' | 'medical' | 'galley';
   color: string;
   allowedAnchors: AnchorType[];
   zAware: boolean; // whether height matters for placement
 }
 
 export const subModules: SubModule[] = [
+  // J. Shower stall
   {
-    id: 'bed',
-    name: 'Bed / Bunk',
-    shortName: 'Bed',
-    width: 2.00,
-    depth: 1.45,
-    height: 2.00,
-    volume: 10.76,
-    category: 'living',
-    color: '#4A90E2',
-    allowedAnchors: ['floor', 'wall'],
-    zAware: true
-  },
-  {
-    id: 'desk',
-    name: 'Desk / Private Workstation',
-    shortName: 'Desk',
-    width: 2.02,
-    depth: 0.98,
-    height: 1.91,
-    volume: 4.35,
-    category: 'living',
-    color: '#5C9FE8',
-    allowedAnchors: ['floor', 'wall'],
-    zAware: true
-  },
-  {
-    id: 'toilet',
-    name: 'Toilet Unit (UWMS)',
-    shortName: 'Toilet',
-    width: 0.65,
-    depth: 0.67,
-    height: 1.49,
-    volume: 2.36,
-    category: 'hygiene',
-    color: '#50C878',
-    allowedAnchors: ['floor'],
-    zAware: true
-  },
-  {
-    id: 'lavatory',
-    name: 'Lavatory / Sink',
-    shortName: 'Lavatory',
-    width: 0.65,
-    depth: 0.54,
-    height: 1.70,
-    volume: 2.69,
-    category: 'hygiene',
-    color: '#5FD392',
-    allowedAnchors: ['floor', 'wall'],
-    zAware: true
-  },
-  {
-    id: 'shower',
+    id: 'shower-stall',
     name: 'Shower Stall',
     shortName: 'Shower',
     width: 1.21,
@@ -76,118 +25,46 @@ export const subModules: SubModule[] = [
     height: 2.51,
     volume: 4.34,
     category: 'hygiene',
-    color: '#6EE3A5',
+    color: '#50C878',
     allowedAnchors: ['floor'],
     zAware: true
   },
-  {
-    id: 'treadmill',
-    name: 'Treadmill Device',
-    shortName: 'Treadmill',
-    width: 0.65,
-    depth: 0.69,
-    height: 1.91,
-    volume: 6.12,
-    category: 'exercise',
-    color: '#E74C3C',
-    allowedAnchors: ['floor'],
-    zAware: true
-  },
-  {
-    id: 'cycle',
-    name: 'Cycle Ergometer',
-    shortName: 'Cycle',
-    width: 0.65,
-    depth: 0.69,
-    height: 1.45,
-    volume: 3.38,
-    category: 'exercise',
-    color: '#EC5E4F',
-    allowedAnchors: ['floor'],
-    zAware: true
-  },
-  {
-    id: 'ared',
-    name: 'Resistive Device (ARED)',
-    shortName: 'ARED',
-    width: 0.65,
-    depth: 0.69,
-    height: 1.91,
-    volume: 3.92,
-    category: 'exercise',
-    color: '#F17062',
-    allowedAnchors: ['floor'],
-    zAware: true
-  },
-  {
-    id: 'medical-bed',
-    name: 'Medical Bed / Stretcher',
-    shortName: 'Med Bed',
-    width: 2.00,
-    depth: 1.45,
-    height: 2.00,
-    volume: 5.80,
-    category: 'medical',
-    color: '#1ABC9C',
-    allowedAnchors: ['floor'],
-    zAware: true
-  },
-  {
-    id: 'galley-equipment',
-    name: 'Small Galley Equipment',
-    shortName: 'Galley Equip',
-    width: 1.41,
-    depth: 1.41,
-    height: 1.91,
-    volume: 4.35,
-    category: 'dining',
-    color: '#F39C12',
-    allowedAnchors: ['floor', 'wall'],
-    zAware: true
-  },
+
+  // K. Dining table zone (tabletop / creative)
   {
     id: 'dining-table',
-    name: 'Dining Table / Small Table',
+    name: 'Dining Table Zone',
     shortName: 'Table',
-    width: 1.19,
-    depth: 1.19,
-    height: 1.91,
+    width: 1.91,
+    depth: 1.91,
+    height: 1.49,
     volume: 10.09,
     category: 'dining',
-    color: '#F5A623',
+    color: '#F39C12',
     allowedAnchors: ['floor'],
     zAware: false
   },
-  {
-    id: 'workbench',
-    name: 'Workbench Tool Station',
-    shortName: 'Workbench',
-    width: 1.18,
-    depth: 2.05,
-    height: 2.00,
-    volume: 4.82,
-    category: 'maintenance',
-    color: '#95A5A6',
-    allowedAnchors: ['floor', 'wall'],
-    zAware: true
-  },
+
+  // L. Storage locker (small-item containment)
   {
     id: 'locker',
-    name: 'Storage Locker / Locker Shelf',
+    name: 'Storage Locker',
     shortName: 'Locker',
-    width: 0.60,
-    depth: 0.60,
-    height: 1.80,
-    volume: 0.65,
+    width: 0.65,
+    depth: 0.54,
+    height: 1.91,
+    volume: 1.20,
     category: 'storage',
     color: '#7F8C8D',
     allowedAnchors: ['floor', 'wall'],
     zAware: true
   },
+
+  // M. Logistics rack
   {
     id: 'logistics-rack',
-    name: 'Logistics Rack / Pallet',
-    shortName: 'Logistics',
+    name: 'Logistics Rack',
+    shortName: 'Log Rack',
     width: 0.98,
     depth: 2.02,
     height: 2.31,
@@ -197,30 +74,79 @@ export const subModules: SubModule[] = [
     allowedAnchors: ['floor'],
     zAware: true
   },
+
+  // N. Workbench surface
   {
-    id: 'control-panel',
-    name: 'Control Panel / Systems Rack',
-    shortName: 'Controls',
-    width: 0.80,
-    depth: 0.50,
+    id: 'workbench-surface',
+    name: 'Workbench Surface',
+    shortName: 'Workbench',
+    width: 2.02,
+    depth: 0.98,
+    height: 1.91,
+    volume: 4.35,
+    category: 'maintenance',
+    color: '#95A5A6',
+    allowedAnchors: ['floor', 'wall'],
+    zAware: true
+  },
+
+  // O. Private mirror station
+  {
+    id: 'mirror-station',
+    name: 'Private Mirror Station',
+    shortName: 'Mirror',
+    width: 0.91,
+    depth: 0.99,
     height: 2.00,
-    volume: 0.80,
-    category: 'control',
-    color: '#2C3E50',
+    volume: 1.80,
+    category: 'habitat',
+    color: '#4A90E2',
     allowedAnchors: ['wall'],
     zAware: true
   },
+
+  // P. Personal leisure seat
   {
-    id: 'sensor',
-    name: 'Sensor / Environmental Unit',
-    shortName: 'Sensor',
-    width: 0.40,
-    depth: 0.40,
-    height: 0.60,
-    volume: 0.10,
-    category: 'control',
-    color: '#16A085',
-    allowedAnchors: ['wall', 'ceiling'],
-    zAware: false
+    id: 'leisure-seat',
+    name: 'Personal Leisure Seat',
+    shortName: 'Seat',
+    width: 0.91,
+    depth: 0.66,
+    height: 2.00,
+    volume: 1.20,
+    category: 'habitat',
+    color: '#5C9FE8',
+    allowedAnchors: ['floor'],
+    zAware: true
+  },
+
+  // Q. Food-prep console
+  {
+    id: 'food-prep-console',
+    name: 'Food-Prep Console',
+    shortName: 'Food Prep',
+    width: 1.41,
+    depth: 1.41,
+    height: 1.91,
+    volume: 4.35,
+    category: 'galley',
+    color: '#F5A623',
+    allowedAnchors: ['floor', 'wall'],
+    zAware: true
+  },
+
+  // R. Medical treatment bay
+  {
+    id: 'treatment-bay',
+    name: 'Medical Treatment Bay',
+    shortName: 'Med Bay',
+    width: 2.00,
+    depth: 1.45,
+    height: 2.00,
+    volume: 5.80,
+    category: 'medical',
+    color: '#1ABC9C',
+    allowedAnchors: ['floor'],
+    zAware: true
   }
 ];
