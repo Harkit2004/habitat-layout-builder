@@ -11,8 +11,10 @@ import {
   FolderOpen,
   Download,
   Box,
-  Users
+  Users,
+  Orbit
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { LayoutState } from '@/types/layout';
 import { canSwitchTo3D } from '@/utils/validation';
@@ -25,6 +27,7 @@ interface ToolbarProps {
 }
 
 export const Toolbar = ({ layoutState, onStateChange }: ToolbarProps) => {
+  const navigate = useNavigate();
   const { canSwitch, errors } = canSwitchTo3D(layoutState);
 
   const handleCrewSizeChange = (value: string) => {
@@ -232,6 +235,19 @@ export const Toolbar = ({ layoutState, onStateChange }: ToolbarProps) => {
           disabled={layoutState.mainModules.length === 0 && layoutState.subModules.length === 0}
         >
           Clear All
+        </Button>
+
+        <Separator orientation="vertical" className="h-6 mx-2" />
+
+        {/* Navigation */}
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={() => navigate('/orbital-simulator')}
+          title="Open Orbital Simulator"
+        >
+          <Orbit className="w-4 h-4 mr-2" />
+          Orbital Simulator
         </Button>
 
         <Separator orientation="vertical" className="h-6 mx-2" />
