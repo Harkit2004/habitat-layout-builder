@@ -7,9 +7,17 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Maximize2, Box, Link2 } from 'lucide-react';
 import { useState } from 'react';
+import { LayoutState } from '@/types/layout';
 
-export const ComponentLibrary = () => {
+interface ComponentLibraryProps {
+  layoutState: LayoutState;
+}
+
+export const ComponentLibrary = ({ layoutState }: ComponentLibraryProps) => {
   const [searchTerm, setSearchTerm] = useState('');
+
+  console.log('ComponentLibrary: mainModules count:', mainModules.length);
+  console.log('ComponentLibrary: subModules count:', subModules.length);
 
   const filteredMainModules = mainModules.filter(module =>
     module.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -20,6 +28,9 @@ export const ComponentLibrary = () => {
     module.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     module.shortName.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  console.log('ComponentLibrary: filteredMainModules:', filteredMainModules.length);
+  console.log('ComponentLibrary: filteredSubModules:', filteredSubModules.length);
 
   return (
     <div className="h-full flex flex-col bg-sidebar border-r border-sidebar-border">
@@ -40,17 +51,20 @@ export const ComponentLibrary = () => {
         />
       </div>
 
-      <Tabs defaultValue="main" className="flex-1 flex flex-col">
-        <TabsList className="mx-4 mt-2">
+      <Tabs defaultValue="main" className="flex-1 flex flex-col overflow-hidden">
+        <TabsList className="mx-4 mt-2 flex-shrink-0">
           <TabsTrigger value="main" className="flex-1">
             Main Modules ({filteredMainModules.length})
           </TabsTrigger>
           <TabsTrigger value="sub" className="flex-1">
             Sub-Modules ({filteredSubModules.length})
+            {layoutState.zoomedModuleId && (
+              <span className="ml-1 text-blue-600">🔍</span>
+            )}
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="main" className="flex-1 mt-0">
+        <TabsContent value="main" className="flex-1 overflow-hidden mt-0">
           <ScrollArea className="h-full">
             <div className="p-4 space-y-2">
               {filteredMainModules.length === 0 ? (
@@ -106,9 +120,27 @@ export const ComponentLibrary = () => {
           </ScrollArea>
         </TabsContent>
 
-        <TabsContent value="sub" className="flex-1 mt-0">
+        <TabsContent value="sub" className="flex-1 overflow-hidden mt-0">
           <ScrollArea className="h-full">
             <div className="p-4 space-y-2">
+              {!layoutState.zoomedModuleId && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+                  <p className="text-sm font-medium text-blue-800">🔍 Zoom Required</p>
+                  <p className="text-xs text-blue-600 mt-1">
+                    Double-click a main module to zoom in before placing sub-modules
+                  </p>
+                </div>
+              )}
+              {layoutState.zoomedModuleId && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-3">
+                  <p className="text-sm font-medium text-green-800">
+                    🎯 Active: {layoutState.mainModules.find(m => m.instanceId === layoutState.zoomedModuleId)?.shortName}
+                  </p>
+                  <p className="text-xs text-green-600 mt-1">
+                    Drop sub-modules into the highlighted room
+                  </p>
+                </div>
+              )}
               {filteredSubModules.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">
                   No sub-modules found
@@ -117,9 +149,17 @@ export const ComponentLibrary = () => {
                 filteredSubModules.map(module => (
                   <Card
                     key={module.id}
-                    className="p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-all hover:border-primary"
-                    draggable
+                    className={`p-3 transition-all ${
+                      layoutState.zoomedModuleId 
+                        ? 'cursor-grab active:cursor-grabbing hover:shadow-md hover:border-primary' 
+                        : 'cursor-not-allowed opacity-50 bg-muted'
+                    }`}
+                    draggable={!!layoutState.zoomedModuleId}
                     onDragStart={(e) => {
+                      if (!layoutState.zoomedModuleId) {
+                        e.preventDefault();
+                        return;
+                      }
                       e.dataTransfer.setData('moduleType', 'sub');
                       e.dataTransfer.setData('subModule', JSON.stringify(module));
                       e.dataTransfer.effectAllowed = 'copy';

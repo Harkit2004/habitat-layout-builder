@@ -115,8 +115,11 @@ export const Toolbar = ({ layoutState, onStateChange }: ToolbarProps) => {
 
   const handleSwitchTo3D = () => {
     if (canSwitch) {
-      toast.success('Switching to 3D view...');
-      // TODO: Implement 3D view navigation
+      // Print layout JSON to console for 3D view
+      console.log('=== 3D VIEW LAYOUT DATA ===');
+      console.log(JSON.stringify(layoutState, null, 2));
+      console.log('=== END LAYOUT DATA ===');
+      toast.success('Layout data printed to console. Check developer tools (F12)!');
     } else {
       toast.error(`Cannot switch to 3D: ${errors.length} error(s) remaining`);
     }

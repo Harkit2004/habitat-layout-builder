@@ -9,21 +9,6 @@ import { PlacedMainModule, PlacedSubModule, LayoutState } from '@/types/layout';
 const PIXELS_PER_METER = 40;
 const GRID_SIZE = 0.5;
 
-// Helper function to check if two rectangles overlap
-const rectanglesOverlap = (rect1: {x: number, y: number, w: number, h: number}, 
-                          rect2: {x: number, y: number, w: number, h: number}): boolean => {
-  return !(rect1.x + rect1.w <= rect2.x || rect2.x + rect2.w <= rect1.x || 
-           rect1.y + rect1.h <= rect2.y || rect2.y + rect2.h <= rect1.y);
-};
-
-// Helper function to calculate used surface area in a main module
-const calculateUsedArea = (mainModule: PlacedMainModule, subModules: PlacedSubModule[]): number => {
-  const children = subModules.filter(sub => sub.parentInstanceId === mainModule.instanceId);
-  return children.reduce((total, sub) => total + (sub.width * sub.depth), 0);
-};
-
-// Collision detection is now handled inline in the new system
-
 interface LayoutCanvas2DProps {
   layoutState: LayoutState;
   onStateChange: (state: LayoutState) => void;
@@ -38,46 +23,21 @@ export const LayoutCanvas2D = ({ layoutState, onStateChange }: LayoutCanvas2DPro
   const [connectingPort, setConnectingPort] = useState<{ moduleId: string; portId: string } | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const [spacePressed, setSpacePressed] = useState(false);
-  const [isModuleDragging, setIsModuleDragging] = useState(false);
-  const [showControls, setShowControls] = useState(true);
+  const [isDraggingModule, setIsDraggingModule] = useState(false);
 
-  // Robust canvas sizing with multiple fallbacks
   useEffect(() => {
     const updateDimensions = () => {
       if (containerRef.current) {
-        const width = containerRef.current.offsetWidth || containerRef.current.clientWidth || 1200;
-        const height = containerRef.current.offsetHeight || containerRef.current.clientHeight || 800;
-        
-        // Only update if we have valid dimensions
-        if (width > 0 && height > 0) {
-          setDimensions({ width, height });
-        }
+        setDimensions({
+          width: containerRef.current.offsetWidth,
+          height: containerRef.current.offsetHeight
+        });
       }
     };
 
-    // Immediate measurement
     updateDimensions();
-    
-    // Delayed measurement to ensure DOM is fully rendered
-    const timeout = setTimeout(updateDimensions, 100);
-    
-    // ResizeObserver for responsive sizing
-    const resizeObserver = new ResizeObserver(() => {
-      updateDimensions();
-    });
-    
-    if (containerRef.current) {
-      resizeObserver.observe(containerRef.current);
-    }
-    
-    // Window resize as backup
     window.addEventListener('resize', updateDimensions);
-    
-    return () => {
-      clearTimeout(timeout);
-      resizeObserver.disconnect();
-      window.removeEventListener('resize', updateDimensions);
-    };
+    return () => window.removeEventListener('resize', updateDimensions);
   }, []);
 
   // Keyboard event handlers
@@ -146,19 +106,11 @@ export const LayoutCanvas2D = ({ layoutState, onStateChange }: LayoutCanvas2DPro
           toast.success(`${subModuleName} deleted`);
         }
       } else if (e.key === 'Escape') {
-        // Deselect, cancel port connection, or exit zoom mode
+        // Deselect or cancel port connection
         e.preventDefault();
         if (connectingPort) {
           setConnectingPort(null);
           toast.info('Connection cancelled');
-        } else if (layoutState.zoomedModuleId) {
-          onStateChange({
-            ...layoutState,
-            zoomedModuleId: null,
-            selectedMainModuleId: null,
-            selectedSubModuleId: null
-          });
-          toast.info('Exited zoom mode');
         } else {
           onStateChange({
             ...layoutState,
@@ -196,18 +148,11 @@ export const LayoutCanvas2D = ({ layoutState, onStateChange }: LayoutCanvas2DPro
     const stage = stageRef.current;
     if (!stage) return;
 
-    // Get drop position relative to container
-    const rect = stage.container().getBoundingClientRect();
-    const dropX = e.clientX - rect.left;
-    const dropY = e.clientY - rect.top;
-    
-    // Convert to canvas coordinates (accounting for stage position and scale)
-    const canvasX = (dropX - stagePos.x) / scale;
-    const canvasY = (dropY - stagePos.y) / scale;
-    
-    // Convert to meters
-    const metersX = canvasX / PIXELS_PER_METER;
-    const metersY = canvasY / PIXELS_PER_METER;
+    const pos = stage.getPointerPosition();
+    if (!pos) return;
+
+    const transform = stage.getAbsoluteTransform().copy().invert();
+    const localPos = transform.point(pos);
 
     if (moduleType === 'main') {
       const moduleData = e.dataTransfer.getData('mainModule');
@@ -215,9 +160,14 @@ export const LayoutCanvas2D = ({ layoutState, onStateChange }: LayoutCanvas2DPro
       
       const module = JSON.parse(moduleData) as MainModule;
       
-      // Snap to grid
-      const snappedX = Math.round(metersX / GRID_SIZE) * GRID_SIZE;
-      const snappedY = Math.round(metersY / GRID_SIZE) * GRID_SIZE;
+      // Store position in meters (already transformed to canvas coordinates)
+      const posInMeters = {
+        x: localPos.x / PIXELS_PER_METER,
+        y: localPos.y / PIXELS_PER_METER
+      };
+      
+      const snappedX = Math.round(posInMeters.x / GRID_SIZE) * GRID_SIZE;
+      const snappedY = Math.round(posInMeters.y / GRID_SIZE) * GRID_SIZE;
 
       const newModule: PlacedMainModule = {
         ...module,
@@ -234,51 +184,40 @@ export const LayoutCanvas2D = ({ layoutState, onStateChange }: LayoutCanvas2DPro
       
       toast.success(`Added ${module.shortName} to layout`);
     } else if (moduleType === 'sub') {
-      // SIMPLE SUB-MODULE PLACEMENT - No complex logic
-      if (!layoutState.zoomedModuleId) {
-        toast.error('Double-click a main module first to zoom in for sub-module placement');
-        return;
-      }
-      
       const moduleData = e.dataTransfer.getData('subModule');
       if (!moduleData) return;
       
       const module = JSON.parse(moduleData) as SubModule;
-      const parentModule = layoutState.mainModules.find(m => m.instanceId === layoutState.zoomedModuleId);
       
+      // Convert drop position to meters
+      const dropX = localPos.x / PIXELS_PER_METER;
+      const dropY = localPos.y / PIXELS_PER_METER;
+      
+      // Find parent main module at drop location
+      const parentModule = layoutState.mainModules.find(m => {
+        const dim = m.rotation === 90 || m.rotation === 270 
+          ? { w: m.depth, d: m.width } 
+          : { w: m.width, d: m.depth };
+        return dropX >= m.x && dropX <= m.x + dim.w &&
+               dropY >= m.y && dropY <= m.y + dim.d;
+      });
+
       if (!parentModule) {
-        toast.error('Zoomed module not found');
+        toast.error('Sub-modules must be placed inside a main module');
         return;
       }
 
-      // Check if allowed
       if (!parentModule.allowedSubModules.includes(module.id)) {
         toast.error(`${module.shortName} cannot be placed in ${parentModule.shortName}`);
         return;
       }
 
-      // Simple placement: just use drop position with basic constraints
-      let relativeX = metersX - parentModule.x;
-      let relativeY = metersY - parentModule.y;
-      
-      // Basic bounds check - keep it inside parent with small margin
-      const margin = 0.1; // 10cm margin - generous
-      const parentW = parentModule.width;
-      const parentH = parentModule.depth;
-      
-      relativeX = Math.max(margin, Math.min(relativeX, parentW - module.width - margin));
-      relativeY = Math.max(margin, Math.min(relativeY, parentH - module.depth - margin));
-      
-      // Snap to grid
-      relativeX = Math.round(relativeX / GRID_SIZE) * GRID_SIZE;
-      relativeY = Math.round(relativeY / GRID_SIZE) * GRID_SIZE;
-
-      // Create sub-module - no collision checking for now (keep it simple)
+      // Calculate relative position within parent (in meters)
       const newSubModule: PlacedSubModule = {
         ...module,
         parentInstanceId: parentModule.instanceId,
-        x: relativeX,
-        y: relativeY,
+        x: dropX - parentModule.x,
+        y: dropY - parentModule.y,
         z: 0,
         instanceId: `${module.id}-${Date.now()}`
       };
@@ -321,35 +260,27 @@ export const LayoutCanvas2D = ({ layoutState, onStateChange }: LayoutCanvas2DPro
   const renderGrid = () => {
     const lines = [];
     const gridSpacing = GRID_SIZE * PIXELS_PER_METER;
-    // Ensure minimum canvas size for grid rendering
-    const width = Math.max(dimensions.width, 1200) / scale;
-    const height = Math.max(dimensions.height, 800) / scale;
-    
-    // Smaller buffer to prevent excessive canvas extension
-    const bufferSize = 400;
-    const gridExtent = { w: width + bufferSize, h: height + bufferSize };
+    const width = dimensions.width / scale;
+    const height = dimensions.height / scale;
 
-    // Start grid from 0,0 with reasonable extent
-    for (let i = 0; i <= gridExtent.w / gridSpacing; i++) {
+    for (let i = 0; i < width / gridSpacing + 20; i++) {
       lines.push(
         <Line
           key={`v-${i}`}
-          points={[i * gridSpacing, 0, i * gridSpacing, gridExtent.h]}
+          points={[i * gridSpacing, 0, i * gridSpacing, height + 1000]}
           stroke="hsl(var(--grid-line))"
           strokeWidth={0.5 / scale}
-          listening={false}
         />
       );
     }
 
-    for (let i = 0; i <= gridExtent.h / gridSpacing; i++) {
+    for (let i = 0; i < height / gridSpacing + 20; i++) {
       lines.push(
         <Line
           key={`h-${i}`}
-          points={[0, i * gridSpacing, gridExtent.w, i * gridSpacing]}
+          points={[0, i * gridSpacing, width + 1000, i * gridSpacing]}
           stroke="hsl(var(--grid-line))"
           strokeWidth={0.5 / scale}
-          listening={false}
         />
       );
     }
@@ -390,52 +321,31 @@ export const LayoutCanvas2D = ({ layoutState, onStateChange }: LayoutCanvas2DPro
     const sub = layoutState.subModules.find(s => s.instanceId === subModuleId);
     if (!sub) return;
     
-    // Get absolute position in pixels and convert to meters
-    const absX = e.target.x() / PIXELS_PER_METER;
-    const absY = e.target.y() / PIXELS_PER_METER;
+    const parent = layoutState.mainModules.find(m => m.instanceId === sub.parentInstanceId);
+    if (!parent) return;
     
-    // Find which main module (if any) can fully contain this sub-module
-    const containingModule = layoutState.mainModules.find(m => {
-      const dims = m.rotation === 90 || m.rotation === 270 
-        ? { w: m.depth, h: m.width } 
-        : { w: m.width, h: m.depth };
-      
-      // Check if ENTIRE sub-module fits within the main module with generous tolerance
-      const tolerance = 0.15; // 15cm tolerance for removal - gives more leverage
-      return absX >= m.x - tolerance && 
-             absY >= m.y - tolerance &&
-             absX + sub.width <= m.x + dims.w + tolerance &&
-             absY + sub.depth <= m.y + dims.h + tolerance;
+    // Get absolute position in pixels
+    const absX = e.target.x();
+    const absY = e.target.y();
+    
+    // Convert to meters
+    const absPosMeters = {
+      x: absX / PIXELS_PER_METER,
+      y: absY / PIXELS_PER_METER
+    };
+    
+    // Calculate relative position to parent (in meters)
+    const relX = absPosMeters.x - parent.x;
+    const relY = absPosMeters.y - parent.y;
+    
+    onStateChange({
+      ...layoutState,
+      subModules: layoutState.subModules.map((s) =>
+        s.instanceId === subModuleId
+          ? { ...s, x: relX, y: relY }
+          : s
+      )
     });
-    
-    if (containingModule) {
-      // Calculate relative position
-      const relativeX = absX - containingModule.x;
-      const relativeY = absY - containingModule.y;
-      
-      // Update state with the current position
-      onStateChange({
-        ...layoutState,
-        subModules: layoutState.subModules.map((s) =>
-          s.instanceId === subModuleId
-            ? { 
-                ...s, 
-                parentInstanceId: containingModule.instanceId,
-                x: relativeX, 
-                y: relativeY 
-              }
-            : s
-        )
-      });
-    } else {
-      // Sub-module is outside any main module - remove it
-      toast.info(`${sub.shortName} removed (must be inside a main module)`);
-      onStateChange({
-        ...layoutState,
-        subModules: layoutState.subModules.filter(s => s.instanceId !== subModuleId),
-        selectedSubModuleId: layoutState.selectedSubModuleId === subModuleId ? null : layoutState.selectedSubModuleId
-      });
-    }
   };
 
   const handlePortClick = (moduleId: string, portId: string) => {
@@ -486,7 +396,6 @@ export const LayoutCanvas2D = ({ layoutState, onStateChange }: LayoutCanvas2DPro
     <div 
       ref={containerRef}
       className="w-full h-full bg-canvas relative"
-      style={{maxWidth: '100%', maxHeight: '100%', overflow: 'hidden'}}
       onDrop={handleDrop}
       onDragOver={(e) => e.preventDefault()}
     >
@@ -495,39 +404,13 @@ export const LayoutCanvas2D = ({ layoutState, onStateChange }: LayoutCanvas2DPro
         width={dimensions.width}
         height={dimensions.height}
         onWheel={handleWheel}
-        draggable={true}
+        draggable={!isDraggingModule}
         x={stagePos.x}
         y={stagePos.y}
         scaleX={scale}
         scaleY={scale}
-        onMouseDown={(e) => {
-          if (isModuleDragging) {
-            e.evt.preventDefault();
-            return;
-          }
-          // Only allow panning if clicking on stage background
-          if (e.target === e.target.getStage()) {
-            setIsPanning(true);
-          }
-        }}
-        onMouseMove={(e) => {
-          if (isModuleDragging) {
-            e.evt.preventDefault();
-          }
-        }}
-        onMouseUp={() => {
-          setIsPanning(false);
-        }}
-        onDragStart={(e) => {
-          if (isModuleDragging) {
-            e.evt.preventDefault();
-            return false;
-          }
-        }}
         onDragEnd={(e) => {
-          if (!isModuleDragging) {
-            setStagePos({ x: e.target.x(), y: e.target.y() });
-          }
+          setStagePos({ x: e.target.x(), y: e.target.y() });
         }}
       >
         <Layer>
@@ -614,31 +497,19 @@ export const LayoutCanvas2D = ({ layoutState, onStateChange }: LayoutCanvas2DPro
                 x={module.x * PIXELS_PER_METER}
                 y={module.y * PIXELS_PER_METER}
                 draggable
-                onDragStart={() => {
-                  setIsModuleDragging(true);
-                }}
+                onDragStart={() => setIsDraggingModule(true)}
                 onClick={() => onStateChange({ 
                   ...layoutState, 
                   selectedMainModuleId: module.instanceId,
                   selectedSubModuleId: null 
                 })}
-                onDblClick={() => {
-                  // Double-click to zoom into module for sub-module placement
-                  onStateChange({
-                    ...layoutState,
-                    zoomedModuleId: module.instanceId,
-                    selectedMainModuleId: module.instanceId,
-                    selectedSubModuleId: null
-                  });
-                  toast.info(`Zoomed into ${module.shortName}. Drop sub-modules here or press Esc to exit.`);
-                }}
                 onTap={() => onStateChange({ 
                   ...layoutState, 
                   selectedMainModuleId: module.instanceId,
                   selectedSubModuleId: null 
                 })}
                 onDragEnd={(e) => {
-                  setIsModuleDragging(false);
+                  setIsDraggingModule(false);
                   handleMainModuleDragEnd(module.instanceId, e);
                 }}
               >
@@ -646,16 +517,11 @@ export const LayoutCanvas2D = ({ layoutState, onStateChange }: LayoutCanvas2DPro
                   width={displayWidth * PIXELS_PER_METER}
                   height={displayDepth * PIXELS_PER_METER}
                   fill={module.color}
-                  stroke={layoutState.zoomedModuleId === module.instanceId ? '#3b82f6' : 
-                         isSelected ? 'hsl(var(--primary))' : 'hsl(var(--border))'}
-                  strokeWidth={layoutState.zoomedModuleId === module.instanceId ? 4 / scale :
-                              isSelected ? 3 / scale : 1 / scale}
-                  opacity={layoutState.zoomedModuleId === module.instanceId ? 0.9 : 0.7}
-                  shadowBlur={layoutState.zoomedModuleId === module.instanceId ? 15 : 
-                             isSelected ? 10 : 0}
-                  shadowColor={layoutState.zoomedModuleId === module.instanceId ? '#3b82f6' : 
-                              "hsl(var(--primary))"}
-                  dash={layoutState.zoomedModuleId === module.instanceId ? [10, 5] : undefined}
+                  stroke={isSelected ? 'hsl(var(--primary))' : 'hsl(var(--border))'}
+                  strokeWidth={isSelected ? 3 / scale : 1 / scale}
+                  opacity={0.7}
+                  shadowBlur={isSelected ? 10 : 0}
+                  shadowColor="hsl(var(--primary))"
                 />
                 
                 {/* Port indicators */}
@@ -751,21 +617,17 @@ export const LayoutCanvas2D = ({ layoutState, onStateChange }: LayoutCanvas2DPro
         <Layer>
           {layoutState.subModules.map((subModule) => {
             const parent = layoutState.mainModules.find(m => m.instanceId === subModule.parentInstanceId);
-            const isSelected = layoutState.selectedSubModuleId === subModule.instanceId;
+            if (!parent) return null;
             
-            // Calculate position - either relative to parent or absolute if no parent
-            const posX = parent ? (parent.x + subModule.x) * PIXELS_PER_METER : subModule.x * PIXELS_PER_METER;
-            const posY = parent ? (parent.y + subModule.y) * PIXELS_PER_METER : subModule.y * PIXELS_PER_METER;
+            const isSelected = layoutState.selectedSubModuleId === subModule.instanceId;
             
             return (
               <Group
                 key={subModule.instanceId}
-                x={posX}
-                y={posY}
+                x={(parent.x + subModule.x) * PIXELS_PER_METER}
+                y={(parent.y + subModule.y) * PIXELS_PER_METER}
                 draggable
-                onDragStart={() => {
-                  setIsModuleDragging(true);
-                }}
+                onDragStart={() => setIsDraggingModule(true)}
                 onClick={(e) => {
                   e.cancelBubble = true;
                   onStateChange({ 
@@ -782,45 +644,8 @@ export const LayoutCanvas2D = ({ layoutState, onStateChange }: LayoutCanvas2DPro
                     selectedMainModuleId: null
                   });
                 }}
-                onDblClick={(e) => {
-                  e.cancelBubble = true;
-                  // Double-click to enable focused movement (visual feedback only)
-                  onStateChange({ 
-                    ...layoutState, 
-                    selectedSubModuleId: subModule.instanceId,
-                    selectedMainModuleId: null
-                  });
-                  toast.info(`${subModule.shortName} selected. Drag to move within ${parent?.shortName || 'module'}. Press DELETE to remove.`);
-                }}
-                onDragMove={(e) => {
-                  if (!parent) return;
-                  
-                  const parentDims = parent.rotation === 90 || parent.rotation === 270 
-                    ? { w: parent.depth, h: parent.width } 
-                    : { w: parent.width, h: parent.depth };
-                  
-                  const pos = e.target.position();
-                  const relativeX = (pos.x / PIXELS_PER_METER) - parent.x;
-                  const relativeY = (pos.y / PIXELS_PER_METER) - parent.y;
-                  
-                  // SIMPLE DRAG SYSTEM - Just constrain to bounds
-                  const margin = 0.1; // 10cm margin - generous
-                  
-                  // Constrain to parent bounds - that's it, keep it simple
-                  const constrainedX = Math.max(margin, Math.min(relativeX, parentDims.w - subModule.width - margin));
-                  const constrainedY = Math.max(margin, Math.min(relativeY, parentDims.h - subModule.depth - margin));
-                  
-                  // Snap to grid
-                  const snappedX = Math.round(constrainedX / GRID_SIZE) * GRID_SIZE;
-                  const snappedY = Math.round(constrainedY / GRID_SIZE) * GRID_SIZE;
-                  
-                  e.target.position({
-                    x: (parent.x + snappedX) * PIXELS_PER_METER,
-                    y: (parent.y + snappedY) * PIXELS_PER_METER
-                  });
-                }}
                 onDragEnd={(e) => {
-                  setIsModuleDragging(false);
+                  setIsDraggingModule(false);
                   handleSubModuleDragEnd(subModule.instanceId, e);
                 }}
               >
@@ -828,13 +653,10 @@ export const LayoutCanvas2D = ({ layoutState, onStateChange }: LayoutCanvas2DPro
                   width={subModule.width * PIXELS_PER_METER}
                   height={subModule.depth * PIXELS_PER_METER}
                   fill={subModule.color}
-                  stroke={isSelected ? '#8b5cf6' : 'rgba(255,255,255,0.7)'}
-                  strokeWidth={isSelected ? 3 / scale : 1 / scale}
-                  opacity={0.85}
-                  cornerRadius={2 / scale}
-                  shadowBlur={isSelected ? 8 : 2}
-                  shadowColor={isSelected ? '#8b5cf6' : 'rgba(0,0,0,0.3)'}
-                  shadowOffset={{ x: 1 / scale, y: 1 / scale }}
+                  stroke={isSelected ? 'hsl(var(--ring))' : 'rgba(255,255,255,0.5)'}
+                  strokeWidth={isSelected ? 2 / scale : 0.5 / scale}
+                  opacity={0.9}
+                  dash={[5, 3]}
                 />
                 
                 <Text
@@ -843,18 +665,8 @@ export const LayoutCanvas2D = ({ layoutState, onStateChange }: LayoutCanvas2DPro
                   height={subModule.depth * PIXELS_PER_METER}
                   align="center"
                   verticalAlign="middle"
-                  fontSize={Math.min(12, Math.max(8, subModule.width * 8)) / scale}
+                  fontSize={10 / scale}
                   fill="white"
-                  fontStyle="bold"
-                />
-                
-                {/* Equipment/furniture size indicator */}
-                <Text
-                  text={`${subModule.width.toFixed(1)}×${subModule.depth.toFixed(1)}m`}
-                  x={2 / scale}
-                  y={(subModule.depth * PIXELS_PER_METER) - (12 / scale)}
-                  fontSize={8 / scale}
-                  fill="rgba(255,255,255,0.9)"
                 />
                 
                 {subModule.zAware && (
@@ -872,28 +684,19 @@ export const LayoutCanvas2D = ({ layoutState, onStateChange }: LayoutCanvas2DPro
         </Layer>
       </Stage>
 
-      <div className="absolute top-4 left-4 bg-card/95 backdrop-blur-sm rounded-lg border border-border shadow-lg">
-        <button 
-          onClick={() => setShowControls(!showControls)}
-          className="w-full p-3 text-left flex items-center justify-between hover:bg-muted/20 rounded-lg transition-colors"
-        >
-          <span className="text-xs text-muted-foreground font-semibold">Controls</span>
-          <span className="text-muted-foreground text-xs">{showControls ? '▼' : '▶'}</span>
-        </button>
-        {showControls && (
-          <div className="px-3 pb-3">
-            <ul className="text-xs space-y-1 text-card-foreground">
-              <li>• Drag canvas background to pan</li>
-              <li>• Scroll wheel to zoom (0.5x-3x)</li>
-              <li>• Drag modules to reposition</li>
-              <li>• <strong>Double-click</strong> main module to zoom in for sub-modules</li>
-              <li>• Click ports to connect modules</li>
-              <li>• Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">R</kbd> to rotate</li>
-              <li>• Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">Del</kbd> to delete</li>
-              <li>• Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">Esc</kbd> to exit zoom/cancel</li>
-            </ul>
-          </div>
-        )}
+      <div className="absolute top-4 left-4 bg-card/95 backdrop-blur-sm p-3 rounded-lg border border-border shadow-lg">
+        <p className="text-xs text-muted-foreground mb-2">Controls</p>
+        <ul className="text-xs space-y-1 text-card-foreground">
+          <li>• Drag canvas background to pan (scroll horizontally/vertically)</li>
+          <li>• Scroll wheel to zoom (min 0.5x, max 3x)</li>
+          <li>• Drag main modules from library to canvas</li>
+          <li>• Drag sub-modules into main modules</li>
+          <li>• Click ports (circles) to connect modules</li>
+          <li>• Click module to select</li>
+          <li>• Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">R</kbd> to rotate</li>
+          <li>• Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">Del</kbd> to delete</li>
+          <li>• Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">Esc</kbd> to deselect/cancel</li>
+        </ul>
       </div>
 
       <div className="absolute bottom-4 right-4 bg-card/95 backdrop-blur-sm p-3 rounded-lg border border-border shadow-lg">
@@ -901,9 +704,6 @@ export const LayoutCanvas2D = ({ layoutState, onStateChange }: LayoutCanvas2DPro
         <p className="text-xs text-muted-foreground">Sub-Modules: {layoutState.subModules.length}</p>
         <p className="text-xs text-muted-foreground">Connections: {layoutState.connections.length}</p>
         <p className="text-xs text-muted-foreground">Zoom: {Math.round(scale * 100)}%</p>
-        {layoutState.zoomedModuleId && (
-          <p className="text-xs text-blue-600 mt-1 font-semibold">📍 Zoomed: {layoutState.mainModules.find(m => m.instanceId === layoutState.zoomedModuleId)?.shortName}</p>
-        )}
         {layoutState.selectedMainModuleId && (
           <p className="text-xs text-primary mt-1">Selected: {layoutState.mainModules.find(m => m.instanceId === layoutState.selectedMainModuleId)?.shortName}</p>
         )}

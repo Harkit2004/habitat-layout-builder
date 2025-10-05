@@ -37,4 +37,5 @@ export interface LayoutState {
   connections: Connection[];
   selectedMainModuleId: string | null;
   selectedSubModuleId: string | null;
+  zoomedModuleId: string | null; // ID of main module we're zoomed into for sub-module placement
 }

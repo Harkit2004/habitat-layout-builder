@@ -15,7 +15,8 @@ const Index = () => {
     subModules: [],
     connections: [],
     selectedMainModuleId: null,
-    selectedSubModuleId: null
+    selectedSubModuleId: null,
+    zoomedModuleId: null
   });
 
   const validationErrors = validateLayout(layoutState);
@@ -24,14 +25,14 @@ const Index = () => {
     <div className="h-screen flex flex-col bg-background">
       <Toolbar layoutState={layoutState} onStateChange={setLayoutState} />
       
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden" style={{maxWidth: '100vw'}}>
         {/* Left sidebar - Component Library */}
-        <div className="w-80 flex-shrink-0">
-          <ComponentLibrary />
+        <div className="w-80 flex-shrink-0" style={{minWidth: '320px', maxWidth: '320px'}}>
+          <ComponentLibrary layoutState={layoutState} />
         </div>
         
         {/* Center - 2D Canvas */}
-        <div className="flex-1">
+        <div className="flex-1" style={{minWidth: '0', maxWidth: 'calc(100vw - 640px)'}}>
           <LayoutCanvas2D 
             layoutState={layoutState}
             onStateChange={setLayoutState}
@@ -39,7 +40,7 @@ const Index = () => {
         </div>
 
         {/* Right sidebar - Validation Panel */}
-        <div className="w-80 flex-shrink-0">
+        <div className="w-80 flex-shrink-0 bg-background border-l-2 border-border" style={{minWidth: '320px', maxWidth: '320px', minHeight: '200px'}}>
           <ValidationPanel errors={validationErrors} />
         </div>
       </div>

@@ -210,7 +210,15 @@ const validatePortLimits = (state: LayoutState): ValidationError[] => {
 
 export const validateLayout = (state: LayoutState): ValidationError[] => {
   const errors: ValidationError[] = [];
-  if (state.mainModules.length === 0) return errors;
+  
+  // Show info message when layout is empty
+  if (state.mainModules.length === 0) {
+    errors.push({
+      type: 'warning',
+      message: 'No modules placed yet. Drag modules from the library to start building your habitat.'
+    });
+    return errors;
+  }
   
   // RULE 1: No floating modules
   const floatingModules = findFloatingModules(state);
