@@ -1,11 +1,11 @@
 import React, { useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, Stars } from '@react-three/drei';
+import { OrbitControls, Stars, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Play, Pause, Home } from 'lucide-react';
+import { Play, Pause, Home, Upload } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 // Physics constants and calculations
@@ -26,6 +26,7 @@ interface OrbitalPhysics {
   orbitalVelocity: number;
   angularVelocity: number;
   period: number;
+  modelUrl?: string | null;
 }
 
 // Physics calculation functions
@@ -373,6 +374,52 @@ function Planet({
   );
 }
 
+// GLB Model Loader component
+function GLBModel({ 
+  url, 
+  scale = 1
+}: { 
+  url: string, 
+  scale?: number
+}) {
+  const gltf = useGLTF(url);
+  const groupRef = useRef<THREE.Group>(null);
+  
+  React.useEffect(() => {
+    if (groupRef.current && gltf?.scene) {
+      // Clear any existing children
+      while (groupRef.current.children.length > 0) {
+        groupRef.current.remove(groupRef.current.children[0]);
+      }
+      
+      // Clone and add the scene
+      const clonedScene = gltf.scene.clone();
+      
+      // Calculate proper centering
+      const box = new THREE.Box3().setFromObject(clonedScene);
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      
+      // Center the model at origin (like the sphere)
+      clonedScene.position.set(-center.x, -center.y, -center.z);
+      clonedScene.scale.set(scale, scale, scale);
+      
+      groupRef.current.add(clonedScene);
+    }
+  }, [gltf, scale]);
+  
+  if (!gltf || !gltf.scene) {
+    return (
+      <mesh>
+        <sphereGeometry args={[0.5, 8, 8]} />
+        <meshBasicMaterial color="red" />
+      </mesh>
+    );
+  }
+  
+  return <group ref={groupRef} />;
+}
+
 // Space Station component with realistic physics
 function SpaceStation({ 
   isSimulating, 
@@ -421,10 +468,15 @@ function SpaceStation({
       const inclinedY = orbitalY * Math.cos(stationPhysics.inclination) - orbitalZ * Math.sin(stationPhysics.inclination);
       const inclinedZ = orbitalY * Math.sin(stationPhysics.inclination) + orbitalZ * Math.cos(stationPhysics.inclination);
       
-      // Update position relative to current planet position
+      // Update position and rotation relative to current planet position
       stationRef.current.position.x = planetPosition.x + orbitalX;
       stationRef.current.position.y = planetPosition.y + inclinedY;
       stationRef.current.position.z = planetPosition.z + inclinedZ;
+      
+      // Update rotation to align with orbital motion and inclination
+      stationRef.current.rotation.y = meanAnomaly;
+      stationRef.current.rotation.x = stationPhysics.inclination;
+      stationRef.current.rotation.z = 0;
     }
   }, [planetPosition, stationPhysics.inclination]);
   
@@ -454,22 +506,50 @@ function SpaceStation({
       const inclinedZ = orbitalY * Math.sin(stationPhysics.inclination) + orbitalZ * Math.cos(stationPhysics.inclination);
       
       // Position relative to planet (always use current planet position)
-      stationRef.current.position.x = planetPosition.x + orbitalX;
-      stationRef.current.position.y = planetPosition.y + inclinedY;
-      stationRef.current.position.z = planetPosition.z + inclinedZ;
+      const finalX = planetPosition.x + orbitalX;
+      const finalY = planetPosition.y + inclinedY;
+      const finalZ = planetPosition.z + inclinedZ;
       
-      // Simple rotation
-      stationRef.current.rotation.y = meanAnomaly;
+      stationRef.current.position.set(finalX, finalY, finalZ);
+      
+      // Debug logging (remove after testing)
+      if (stationPhysics.modelUrl && Math.floor(meanAnomaly * 10) % 10 === 0) {
+        console.log('Station position:', { 
+          finalX: finalX.toFixed(2), 
+          finalY: finalY.toFixed(2), 
+          finalZ: finalZ.toFixed(2),
+          orbitalX: orbitalX.toFixed(2),
+          orbitalZ: orbitalZ.toFixed(2),
+          meanAnomaly: meanAnomaly.toFixed(2)
+        });
+      }
+      
+      // Proper orbital rotation - align with velocity vector and inclination
+      stationRef.current.rotation.set(
+        stationPhysics.inclination, // X rotation matches inclination
+        meanAnomaly,                // Y rotation follows orbital motion
+        0                          // Z rotation neutral
+      );
     }
   });
   
   return (
     <group ref={stationRef}>
-      {/* Yellow marker for space station */}
+      {/* Reference sphere - always visible for alignment */}
       <mesh>
         <sphereGeometry args={[0.5, 8, 8]} />
-        <meshBasicMaterial color="yellow" />
+        <meshBasicMaterial color="yellow" transparent opacity={stationPhysics.modelUrl ? 0.3 : 1.0} />
       </mesh>
+      
+      {/* GLB Model if loaded - should align exactly with sphere */}
+      {stationPhysics.modelUrl && (
+        <group>
+          <GLBModel 
+            url={stationPhysics.modelUrl} 
+            scale={1}
+          />
+        </group>
+      )}
     </group>
   );
 }
@@ -497,8 +577,20 @@ export function OrbitalSimulator() {
     inclination: 0.05,
     orbitalVelocity: 7660, // ISS velocity in m/s
     angularVelocity: 1.13e-3, // ISS angular velocity in rad/s
-    period: 5580 // ISS period in seconds (93 minutes)
+    period: 5580, // ISS period in seconds (93 minutes)
+    modelUrl: null
   });
+  
+  // File input handler for GLB models
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && file.name.toLowerCase().endsWith('.glb')) {
+      const url = URL.createObjectURL(file);
+      setStationPhysics({...stationPhysics, modelUrl: url});
+    } else {
+      alert('Please select a valid .glb file');
+    }
+  };
   
   const handlePlanetUpdate = (pos: THREE.Vector3, physics: OrbitalPhysics) => {
     setPlanetPosition(pos);
@@ -599,6 +691,44 @@ export function OrbitalSimulator() {
               />
               <div className="text-xs text-gray-500 mt-1">
                 {isSimulating ? 'Pause simulation to adjust parameters' : 'Tilts the station\'s orbital plane'}
+              </div>
+            </div>
+            
+            {/* GLB Model Upload */}
+            <div>
+              <label className="text-xs text-gray-400 block mb-2">Space Station Model (.glb)</label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="file"
+                  accept=".glb"
+                  onChange={handleFileUpload}
+                  disabled={isSimulating}
+                  className="hidden"
+                  id="glb-upload"
+                />
+                <label 
+                  htmlFor="glb-upload" 
+                  className={`flex items-center px-3 py-2 text-xs rounded-lg cursor-pointer ${
+                    isSimulating ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
+                >
+                  <Upload className="w-3 h-3 mr-1" />
+                  Upload GLB
+                </label>
+                {stationPhysics.modelUrl && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setStationPhysics({...stationPhysics, modelUrl: null})}
+                    disabled={isSimulating}
+                    className="text-xs px-2 py-1"
+                  >
+                    Reset
+                  </Button>
+                )}
+              </div>
+              <div className="text-xs text-gray-500 mt-1">
+                {stationPhysics.modelUrl ? 'Custom model loaded' : 'Upload a .glb file to replace the yellow sphere'}
               </div>
             </div>
           </CardContent>
